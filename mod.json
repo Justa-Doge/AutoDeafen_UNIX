@@ -1,17 +1,18 @@
 {
-	"geode": "5.3.0",
+	"geode": "5.7.1",	
 	"gd": {
-		"win": "2.2081"
+		"win": "2.2081",
+		"mac": "2.2081"
 	},
-	"id": "lynxdeer.autodeafen",
+	"id": "justa_doge.autodeafen_unix",
 	"description": "Makes your loud friends shut up when it counts.",
 	"tags": ["enhancement", "utility"],
 	"links": {
-		"source": "https://github.com/Lynxdeer/AutoDeafen"
+		"source": "https://github.com/JSyv05/AutoDeafen_UNIX"
 	},
-	"name": "AutoDeafen",
-	"version": "v2.0.3",
-	"developer": "Lynxdeer",
+	"name": "AutoDeafen_UNIX",
+	"version": "v1.0.0",
+	"developer": "Justa_Doge",
 	"dependencies": { "geode.node-ids": ">=v1.22.0" },
 	"settings": {
 		"default_enabled": {

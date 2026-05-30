@@ -1,9 +1,13 @@
 #pragma once
 
+#include <Geode/Geode.hpp>
+#include "globals.h"
+
 #include <thread>
 #include <atomic>
 #include <string>
 #include <mutex>
+#include <cstdint>
 
 // fuck the ws2 library bro
 #ifdef _WIN32
@@ -18,11 +22,13 @@
     #include <sys/un.h>
     #include <cstring>
     #include <cerrno>
+    #include <cstdlib>
+    #include <unordered_map>
     #define HANDLE int
     #define INVALID_HANDLE_VALUE -1
     #define GENERIC_READ O_RDONLY
     #define GENERIC_WRITE O_WRONLY
-    #define DWORD uint32_t
+    #define DWORD std::uint32_t
     #define INFINITE -1
     #define TRUE true
     #define FALSE false
@@ -34,38 +40,177 @@
 
     struct OVERLAPPED {
         int hEvent = -1;
+        int fd = INVALID_HANDLE_VALUE;
+        void* buffer = nullptr;
+        DWORD size = 0;
+        DWORD transferred = 0;
+        bool pending = false;
     };
 
+    inline std::atomic<int> nextEvent = -2;
+    inline std::mutex eventMutex;
+    inline std::unordered_map<int, int> eventFds;
+    inline thread_local int lastError = 0;
+
+    inline void setLastError(int err) {
+        lastError = err;
+        errno = err;
+    }
+
     inline int CreateEvent(void*, bool, bool, void*) {
-        return 0; // dummy, we don't need real events
+        return nextEvent--;
     }
 
-    inline void CloseHandle(int) {}  // no-op, socket closed separately
-
-    inline void ResetEvent(int) {}   // no-op
-
-    inline bool WriteFile(int fd, const void* buf, DWORD size, DWORD* written, OVERLAPPED*) {
-        ssize_t result = write(fd, buf, size);
-        if (written) *written = result >= 0 ? result : 0;
-        return result == (ssize_t)size;
+    inline void CloseHandle(int handle) {
+        if (handle < -1) {
+            std::lock_guard lock(eventMutex);
+            eventFds.erase(handle);
+            return;
+        }
+        if (handle >= 0) close(handle);
     }
 
-    inline bool ReadFile(int fd, void* buf, DWORD size, DWORD* bytesRead, OVERLAPPED*) {
-        ssize_t result = read(fd, buf, size);
-        if (bytesRead) *bytesRead = result >= 0 ? result : 0;
-        return result == (ssize_t)size;
+    inline void ResetEvent(int event) {
+        if (event < -1) {
+            std::lock_guard lock(eventMutex);
+            eventFds.erase(event);
+        }
     }
 
-    inline DWORD WaitForSingleObject(int, DWORD) {
-        return WAIT_OBJECT_0; // blocking read/write already waited
+    inline bool waitForFd(int fd, short events, DWORD timeout) {
+        int pollTimeout = timeout == static_cast<DWORD>(INFINITE) ? -1 : static_cast<int>(timeout);
+        pollfd pfd{fd, events, 0};
+
+        while (true) {
+            int result = poll(&pfd, 1, pollTimeout);
+            if (result > 0) return (pfd.revents & (events | POLLHUP | POLLERR)) != 0;
+            if (result == 0) {
+                setLastError(EAGAIN);
+                return false;
+            }
+            if (errno != EINTR) {
+                setLastError(errno);
+                return false;
+            }
+        }
     }
 
-    inline bool GetOverlappedResult(int, OVERLAPPED*, DWORD*, bool) {
-        return true; // blocking I/O already completed
+    inline bool finishRead(OVERLAPPED* overlapped, DWORD timeout = 0) {
+        auto* bytes = static_cast<char*>(overlapped->buffer);
+
+        while (overlapped->transferred < overlapped->size) {
+            ssize_t result = read(
+                overlapped->fd,
+                bytes + overlapped->transferred,
+                overlapped->size - overlapped->transferred
+            );
+
+            if (result > 0) {
+                overlapped->transferred += static_cast<DWORD>(result);
+                continue;
+            }
+            if (result == 0) {
+                overlapped->pending = false;
+                setLastError(0);
+                return false;
+            }
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                overlapped->pending = true;
+                setLastError(EAGAIN);
+                if (timeout == 0 || !waitForFd(overlapped->fd, POLLIN, timeout)) return false;
+                continue;
+            }
+
+            overlapped->pending = false;
+            setLastError(errno);
+            return false;
+        }
+
+        overlapped->pending = false;
+        setLastError(0);
+        return true;
+    }
+
+    inline bool WriteFile(int fd, const void* buf, DWORD size, DWORD* written, OVERLAPPED* overlapped) {
+        DWORD total = 0;
+        auto* bytes = static_cast<const char*>(buf);
+
+        while (total < size) {
+            ssize_t result = write(fd, bytes + total, size - total);
+            if (result > 0) {
+                total += static_cast<DWORD>(result);
+                continue;
+            }
+            if (result < 0 && errno == EINTR) continue;
+            if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                if (waitForFd(fd, POLLOUT, static_cast<DWORD>(INFINITE))) continue;
+            }
+
+            if (written) *written = total;
+            if (overlapped) {
+                overlapped->fd = fd;
+                overlapped->size = size;
+                overlapped->transferred = total;
+                overlapped->pending = false;
+            }
+            setLastError(result < 0 ? errno : EIO);
+            return false;
+        }
+
+        if (written) *written = total;
+        if (overlapped) {
+            overlapped->fd = fd;
+            overlapped->size = size;
+            overlapped->transferred = total;
+            overlapped->pending = false;
+        }
+        setLastError(0);
+        return true;
+    }
+
+    inline bool ReadFile(int fd, void* buf, DWORD size, DWORD* bytesRead, OVERLAPPED* overlapped) {
+        if (!overlapped) {
+            OVERLAPPED local;
+            return ReadFile(fd, buf, size, bytesRead, &local);
+        }
+
+        overlapped->fd = fd;
+        overlapped->buffer = buf;
+        overlapped->size = size;
+        overlapped->transferred = 0;
+        overlapped->pending = false;
+
+        if (overlapped->hEvent < -1) {
+            std::lock_guard lock(eventMutex);
+            eventFds[overlapped->hEvent] = fd;
+        }
+
+        bool complete = finishRead(overlapped);
+        if (bytesRead) *bytesRead = overlapped->transferred;
+        return complete;
+    }
+
+    inline DWORD WaitForSingleObject(int event, DWORD timeout) {
+        int fd = event;
+        if (event < -1) {
+            std::lock_guard lock(eventMutex);
+            auto it = eventFds.find(event);
+            if (it == eventFds.end()) return WAIT_OBJECT_0;
+            fd = it->second;
+        }
+
+        return waitForFd(fd, POLLIN, timeout) ? WAIT_OBJECT_0 : WAIT_TIMEOUT;
+    }
+
+    inline bool GetOverlappedResult(int, OVERLAPPED* overlapped, DWORD* transferred, bool wait) {
+        bool complete = !overlapped->pending || finishRead(overlapped, wait ? static_cast<DWORD>(INFINITE) : 1000);
+        if (transferred) *transferred = overlapped->transferred;
+        return complete;
     }
 
     inline DWORD GetLastError() {
-        return errno;
+        return static_cast<DWORD>(lastError);
     }
 
     inline void CancelIo(int) {} // no-op
@@ -78,14 +223,30 @@
 
         int fd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (fd < 0) return INVALID_HANDLE_VALUE;
+        fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 
         struct sockaddr_un addr{};
         addr.sun_family = AF_UNIX;
         strncpy(addr.sun_path, narrow.c_str(), sizeof(addr.sun_path) - 1);
 
-        if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
+        int result = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+        if (result != 0 && errno != EINPROGRESS) {
             close(fd);
             return INVALID_HANDLE_VALUE;
+        }
+        if (result != 0) {
+            if (!waitForFd(fd, POLLOUT, 1000)) {
+                close(fd);
+                return INVALID_HANDLE_VALUE;
+            }
+
+            int error = 0;
+            socklen_t errorLength = sizeof(error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errorLength) != 0 || error != 0) {
+                close(fd);
+                setLastError(error ? error : errno);
+                return INVALID_HANDLE_VALUE;
+            }
         }
         return fd;
     }
@@ -106,7 +267,9 @@ namespace ipc {
         std::wstring pipe = L"\\\\?\\pipe\\discord-ipc-" + std::to_wstring(i);
         HANDLE hPipe = CreateFileW(pipe.c_str(), GENERIC_READ|GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
     #else
-        const char* tmp = getenv("XDG_RUNTIME_DIR") ?: getenv("TMPDIR") ?: "/tmp";
+        const char* tmp = std::getenv("XDG_RUNTIME_DIR");
+        if (!tmp) tmp = std::getenv("TMPDIR");
+        if (!tmp) tmp = "/tmp";
         std::wstring pipe = std::wstring(tmp, tmp + strlen(tmp)) + L"/discord-ipc-" + std::to_wstring(i);
         HANDLE hPipe = CreateFileW(pipe.c_str(), 0, 0, nullptr, 0, 0, nullptr);
     #endif
@@ -209,7 +372,7 @@ namespace ipc {
             CloseHandle(overlapped.hEvent);
         }
 
-        log::info("pipe invalidated");
+        //log::info("pipe invalidated");
         authenticated = false;
         discordPipe = INVALID_HANDLE_VALUE;
 

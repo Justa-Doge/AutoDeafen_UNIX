@@ -21,6 +21,7 @@ inline void openURL(const std::string& url) {
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
 
+#include "globals.h"
 #include "oauth.h"
 
 inline std::string formatPercentageString(float value) {

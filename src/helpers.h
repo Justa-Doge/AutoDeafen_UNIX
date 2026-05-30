@@ -1,5 +1,8 @@
 #pragma once
 
+#include <Geode/Geode.hpp>
+#include "globals.h"
+
 #include <chrono>
 #include <Geode/utils/web.hpp>
 #include <Geode/loader/Event.hpp>
@@ -8,7 +11,6 @@
 
 #include "ipc.h"
 
-#include <Geode/Geode.hpp>
 using namespace geode::prelude;
 
 namespace helpers {
