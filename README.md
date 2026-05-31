@@ -1,4 +1,4 @@
-<img width="671" height="529" alt="image" src="https://github.com/user-attachments/assets/92db19d9-1a61-470e-b276-71077f03eec8" /># <cj>AutoDeafen</c>
+<cj>AutoDeafen</c>
 
 Automatically <cl>deafens</c> when you <cj>reach a certain percentage</c> in a level, then <co>undeafens when you win/die</c>.
 
