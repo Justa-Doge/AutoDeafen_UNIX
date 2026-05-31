@@ -11,7 +11,7 @@
 		"source": "https://github.com/Justa-Doge/AutoDeafen_UNIX"
 	},
 	"name": "AutoDeafen_UNIX",
-	"version": "v1.0.0",
+	"version": "v1.0.1",
 	"developer": "Justa_Doge",
 	"dependencies": { "geode.node-ids": ">=v1.22.0" },
 	"settings": {
