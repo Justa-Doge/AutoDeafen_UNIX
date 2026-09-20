@@ -1,13 +1,15 @@
 #pragma once
 
-#include <thread>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace oauth {
 
-    void serverThread();
+inline constexpr std::uint16_t kCallbackPort = 8000;
+inline constexpr std::string_view kRedirectUri = "http://localhost:8000";
 
-    inline void startServer() {
-        std::thread(serverThread).detach();
-    }
+std::optional<std::string> startServer(std::string clientId, std::string clientSecret);
 
 }

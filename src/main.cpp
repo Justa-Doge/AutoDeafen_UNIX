@@ -1,156 +1,156 @@
 #include <Geode/Geode.hpp>
-#include "globals.h"
-#include "ipc.h"
-#include "helpers.h"
-
-#include "gui.h"
-using namespace geode::prelude;
-
-#include <Geode/modify/MenuLayer.hpp>
-#include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/PlayerObject.hpp>
-#include <cocos2d.h>
+#include <Geode/modify/PlayLayer.hpp>
+
+#include "globals.h"
+#include "gui.h"
+#include "helpers.h"
+#include "ipc.h"
+#include "level_settings.h"
+#include "linux_setup.h"
+
+using namespace geode::prelude;
+
+namespace {
+
+void resetAttemptState() {
+    state::deafenedThisAttempt = false;
+    state::playerDiedThisAttempt = false;
+}
+
+void endAttempt() {
+    if (state::deafenedThisAttempt && !state::playerDiedThisAttempt) {
+        ipc::setDeafened(false);
+    }
+
+    resetAttemptState();
+}
+
+void loadAuthentication() {
+    auto mod = Mod::get();
+
+    if (mod->hasSavedValue("CLIENT_ID")) {
+        state::clientId = helpers::trimAsciiWhitespace(
+            mod->getSavedValue<std::string>("CLIENT_ID")
+        );
+    }
+    if (mod->hasSavedValue("CLIENT_SECRET")) {
+        state::clientSecret = helpers::trimAsciiWhitespace(
+            mod->getSavedValue<std::string>("CLIENT_SECRET")
+        );
+    }
+    if (!mod->hasSavedValue("DISCORD_ACCESS_TOKEN") ||
+        !mod->hasSavedValue("DISCORD_REFRESH_TOKEN") ||
+        !mod->hasSavedValue("TOKEN_EXPIRY")) {
+        return;
+    }
+
+    state::refreshToken = mod->getSavedValue<std::string>("DISCORD_REFRESH_TOKEN");
+    state::tokenExpiry = mod->getSavedValue<long long>("TOKEN_EXPIRY");
+
+    if (helpers::currentTime() < state::tokenExpiry) {
+        state::accessToken = mod->getSavedValue<std::string>("DISCORD_ACCESS_TOKEN");
+        helpers::initializeDiscordIpc();
+    }
+    helpers::refreshDiscordAuthIfNeeded();
+}
+
+}
 
 $on_mod(Loaded) {
-	if (Mod::get()->hasSavedValue("CLIENT_ID")) CLIENT_ID = Mod::get()->getSavedValue<std::string>("CLIENT_ID");
-	if (Mod::get()->hasSavedValue("CLIENT_SECRET")) CLIENT_SECRET = Mod::get()->getSavedValue<std::string>("CLIENT_SECRET");
-    if (Mod::get()->hasSavedValue("DISCORD_ACCESS_TOKEN")) {
-
-    	log::info("loaded");
-
-        if (!Mod::get()->hasSavedValue("DISCORD_REFRESH_TOKEN") || !Mod::get()->hasSavedValue("TOKEN_EXPIRY")) return;
-    	log::info("passed refresh token check");
-
-        DISCORD_REFRESH_TOKEN = Mod::get()->getSavedValue<std::string>("DISCORD_REFRESH_TOKEN");
-        TOKEN_EXPIRY = Mod::get()->getSavedValue<long long>("TOKEN_EXPIRY");
-
-        if (helpers::currentTime() > TOKEN_EXPIRY) {
-            log::info("sending refresh request");
-            helpers::sendRefreshRequest();
-        } else {
-            DISCORD_ACCESS_TOKEN = Mod::get()->getSavedValue<std::string>("DISCORD_ACCESS_TOKEN");
-            log::info("loaded saved auth token {}", DISCORD_ACCESS_TOKEN);
-            helpers::initIPC();
-        }
-    }
+    linux_setup::registerSetting();
+    loadAuthentication();
 };
 
 class $modify(PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-		if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 
-    	deafenedThisAttempt = false;
-    	hasDied = false;
-
-        int id = m_level -> m_levelID.value();
-		short levelType = helpers::getLevelType(level);
-		if (levelType == 1) id = m_level -> m_M_ID;
-
-    	CURRENT_LEVEL = std::to_string(id) + "-" + std::to_string(levelType);
-
-    	bool defaultEnabled = Mod::get()->getSettingValue<bool>("default_enabled");
-    	float defaultDeafenPercentage = Mod::get()->getSettingValue<float>("default_percentage");
-
-    	if (Mod::get()->hasSavedValue(CURRENT_LEVEL)) {
-    		auto value = Mod::get()->getSavedValue<matjson::Value>(CURRENT_LEVEL);
-    		DEAFEN_ENABLED = value["e"].asBool().ok().value_or(defaultEnabled);
-    		DEAFEN_PERCENTAGE = value["p"].as<float>().ok().value_or(defaultDeafenPercentage);
-    	} else {
-    		DEAFEN_ENABLED = defaultEnabled;
-    		DEAFEN_PERCENTAGE = defaultDeafenPercentage;
-    	}
-  
+        resetAttemptState();
+        level_settings::load(level);
         return true;
     }
 
-    void postUpdate(float p0) {
-		PlayLayer::postUpdate(p0);
-		if (this->m_isPracticeMode && !Mod::get()->getSettingValue<bool>("practice")) { return; }
-    	if (!DEAFEN_ENABLED) return;
-    	if (this->m_hasCompletedLevel) {
-    		if (deafenedThisAttempt) {
-    			ipc::deafen(false);
-    			deafenedThisAttempt = false;
-    			hasDied = false;
-    		}
-    		return;
-    	}
+    void postUpdate(float deltaTime) {
+        PlayLayer::postUpdate(deltaTime);
+        helpers::refreshDiscordAuthIfNeeded();
 
-		if (getCurrentPercent() >= DEAFEN_PERCENTAGE && !deafenedThisAttempt) {
-			ipc::deafen(true);
-            deafenedThisAttempt = true;
-		}
-	}
-    void resetLevel() {
-    	PlayLayer::resetLevel();
-    	deafenedThisAttempt = false;
-    	hasDied = false;
-	}
+        const auto shouldManageVoice = state::deafenEnabled &&
+            (!m_isPracticeMode || Mod::get()->getSettingValue<bool>("practice"));
 
-};
-
-class $modify(PlayerObject) {
-    void playerDestroyed(bool p0) {
-        auto playLayer = PlayLayer::get();
-        if (playLayer && playLayer->m_level && this == playLayer->m_player1 && !playLayer->m_level->isPlatformer()) {
-            if (deafenedThisAttempt && !hasDied) {
-                ipc::deafen(false);
-                hasDied = true;
-            }
+        if (!shouldManageVoice || m_hasCompletedLevel) {
+            endAttempt();
+            return;
         }
-        PlayerObject::playerDestroyed(p0);
+
+        if (getCurrentPercent() >= state::deafenPercentage && !state::deafenedThisAttempt) {
+            ipc::setDeafened(true);
+            state::deafenedThisAttempt = true;
+        }
+    }
+
+    void resetLevel() {
+        if (state::deafenedThisAttempt && !state::playerDiedThisAttempt) {
+            ipc::setDeafened(false);
+        }
+
+        PlayLayer::resetLevel();
+        resetAttemptState();
+    }
+
+    void onExit() {
+        endAttempt();
+        PlayLayer::onExit();
     }
 };
 
-class $modify(MyPauseLayer, PauseLayer) {
+class $modify(PlayerObject) {
+    void playerDestroyed(bool destroyedByPlayer) {
+        const auto playLayer = PlayLayer::get();
+        const auto isNormalAttempt = playLayer && playLayer->m_level &&
+            this == playLayer->m_player1 &&
+            !playLayer->m_level->isPlatformer();
 
-	void onQuit(cocos2d::CCObject* sender) {
-		PauseLayer::onQuit(sender);
-		if (deafenedThisAttempt) {
-			ipc::deafen(false);
-		}
-		deafenedThisAttempt = false;
-		hasDied = false;
+        if (isNormalAttempt && state::deafenedThisAttempt && !state::playerDiedThisAttempt) {
+            ipc::setDeafened(false);
+            state::playerDiedThisAttempt = true;
+        }
 
-		bool defaultEnabled = Mod::get()->getSettingValue<bool>("default_enabled");
-		float defaultDeafenPercentage = Mod::get()->getSettingValue<float>("default_percentage");
+        PlayerObject::playerDestroyed(destroyedByPlayer);
+    }
+};
 
-		if (!(DEAFEN_ENABLED == defaultEnabled && defaultDeafenPercentage == DEAFEN_PERCENTAGE)) {
+class $modify(AutoDeafenPauseLayer, PauseLayer) {
+    void onQuit(CCObject* sender) {
+        level_settings::save();
+        PauseLayer::onQuit(sender);
+    }
 
-			// not the most readable but nobody's reading it so idc
-			auto json = matjson::Value();
-			json["e"] = DEAFEN_ENABLED;
-			json["p"] = DEAFEN_PERCENTAGE;
+    void onAutoDeafenMenuClick(CCObject*) {
+        if (state::accessToken.empty()) {
+            gui::openSetupPopup();
+            return;
+        }
 
-			Mod::get()->setSavedValue(CURRENT_LEVEL, json);
+        gui::openModPopup();
+    }
 
-		}
-
-	}
-
-	void onAutoDeafenMenuClick(CCObject* target) {
-		if (!DISCORD_ACCESS_TOKEN.empty()) {
-		// if (ipc::authenticated) {
-			openModPopup();
-		} else {
-			gui::openSetupPopup();
-		}
-	}
-	void customSetup() {
+    void customSetup() {
+        endAttempt();
         PauseLayer::customSetup();
-        auto menu = this->getChildByID("right-button-menu");
-        
-        auto sprite = CCSprite::createWithSpriteFrameName("GJ_musicOffBtn_001.png");
-        auto btn = CCMenuItemSpriteExtra::create(sprite, sprite, this, menu_selector(MyPauseLayer::onAutoDeafenMenuClick));
-        // auto btn = CCMenuItemExt::createSpriteExtra(
-        //     sprite,
-        //     [this](CCMenuItemSpriteExtra* btn) {
-        //
 
-        //     }
-        // );
-        menu->addChild(btn);
+        const auto menu = getChildByID("right-button-menu");
+        const auto sprite = CCSprite::createWithSpriteFrameName("GJ_musicOffBtn_001.png");
+        if (!menu || !sprite) return;
+
+        const auto button = CCMenuItemSpriteExtra::create(
+            sprite,
+            sprite,
+            this,
+            menu_selector(AutoDeafenPauseLayer::onAutoDeafenMenuClick)
+        );
+        menu->addChild(button);
         menu->updateLayout();
     }
 };

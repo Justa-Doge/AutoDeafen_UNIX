@@ -1,20 +1,17 @@
 #include "globals.h"
 
-std::string CLIENT_ID = "";
-std::string CLIENT_SECRET = "";
-std::string DISCORD_ACCESS_TOKEN = "";
-std::string DISCORD_REFRESH_TOKEN = "";
+namespace state {
 
-bool webRequestDone = false;
-bool resDidntReturnOk = false;
+std::string clientId;
+std::string clientSecret;
+std::string accessToken;
+std::string refreshToken;
+std::int64_t tokenExpiry = 0;
 
-int responseCode = 0;
-std::string responseError;
-long long TOKEN_EXPIRY = 0;
-
-bool currentlyInMenu = false;
-bool DEAFEN_ENABLED = false;
-float DEAFEN_PERCENTAGE = 50.0f;
+bool deafenEnabled = false;
+float deafenPercentage = 50.0f;
 bool deafenedThisAttempt = false;
-bool hasDied = false;
-std::string CURRENT_LEVEL = "";
+bool playerDiedThisAttempt = false;
+std::string currentLevelKey;
+
+}

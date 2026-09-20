@@ -2,9 +2,13 @@ name: Build Geode Mod
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - "**"
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -12,19 +16,23 @@ jobs:
       fail-fast: false
       matrix:
         config:
-      
-        - name: macOS
-          os: macos-latest
+          - name: Win64 (Windows and Linux/Wine)
+            os: windows-latest
+            target: Win64
+          - name: macOS Universal
+            os: macos-latest
+            target: MacOS
 
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
         with:
+          sdk: given
           combine: true
           target: ${{ matrix.config.target }}
 
@@ -34,10 +42,54 @@ jobs:
     needs: ['build']
 
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Read mod version
+        id: metadata
+        shell: bash
+        run: echo "version=$(jq -r '.version' mod.json)" >> "$GITHUB_OUTPUT"
+
       - uses: geode-sdk/build-geode-mod/combine@main
         id: build
 
-      - uses: actions/upload-artifact@v4
+      - name: Validate combined package
+        shell: bash
+        env:
+          BUILD_OUTPUT: ${{ steps.build.outputs.build-output }}
+          EXPECTED_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t packages < <(find "$BUILD_OUTPUT" -maxdepth 1 -type f -name '*.geode')
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "Expected exactly one combined .geode package, found ${#packages[@]}" >&2
+            exit 1
+          fi
+
+          package="${packages[0]}"
+          unzip -tq "$package"
+
+          actual_version=$(unzip -p "$package" mod.json | jq -r '.version')
+          if [ "$actual_version" != "$EXPECTED_VERSION" ]; then
+            echo "Expected version $EXPECTED_VERSION, found $actual_version" >&2
+            exit 1
+          fi
+
+          entries=$(unzip -Z1 "$package")
+          for required in \
+            justa_doge.autodeafen_unix.dll \
+            justa_doge.autodeafen_unix.dylib \
+            about.md \
+            resources/justa_doge.autodeafen_unix/LINUX_SETUP.txt; do
+            if ! grep -Fxq "$required" <<< "$entries"; then
+              echo "Combined package is missing $required" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload combined package
+        uses: actions/upload-artifact@v7
         with:
-          name: Build Output
+          name: AutoDeafen-${{ steps.metadata.outputs.version }}
           path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error

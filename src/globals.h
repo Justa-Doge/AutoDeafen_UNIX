@@ -1,21 +1,20 @@
 #pragma once
+
+#include <cstdint>
 #include <string>
 
-extern std::string CLIENT_ID;
-extern std::string CLIENT_SECRET;
-extern std::string DISCORD_ACCESS_TOKEN;
-extern std::string DISCORD_REFRESH_TOKEN;
+namespace state {
 
-extern bool webRequestDone;
-extern bool resDidntReturnOk;
+extern std::string clientId;
+extern std::string clientSecret;
+extern std::string accessToken;
+extern std::string refreshToken;
+extern std::int64_t tokenExpiry;
 
-extern int responseCode;
-extern std::string responseError;
-extern long long TOKEN_EXPIRY;
-
-extern bool currentlyInMenu;
-extern bool DEAFEN_ENABLED;
-extern float DEAFEN_PERCENTAGE;
+extern bool deafenEnabled;
+extern float deafenPercentage;
 extern bool deafenedThisAttempt;
-extern bool hasDied;
-extern std::string CURRENT_LEVEL;
+extern bool playerDiedThisAttempt;
+extern std::string currentLevelKey;
+
+}

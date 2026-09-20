@@ -1,0 +1,312 @@
+AUTODEAFEN - LINUX SETUP
+========================
+
+This guide covers the extra Discord setup and troubleshooting needed after
+AutoDeafen is already installed and running on Linux.
+
+
+1. CONNECT DISCORD IPC
+----------------------
+
+AutoDeafen requires a Discord desktop client that supports Discord RPC
+voice-setting commands. Rich Presence support alone is not enough.
+
+Choose ONE of the following setups.
+
+OPTION A - Run the official Windows Discord desktop client in the same
+Wine/Proton prefix
+
+This client can create the Windows named pipe AutoDeafen needs directly. Open
+Discord before Geometry Dash. No Linux IPC bridge is needed.
+
+OPTION B - Use a native Linux Discord client
+
+Because AutoDeafen runs through Wine or Proton as a Windows mod, it expects a
+Windows named pipe. A native Linux Discord client creates a Unix socket, so
+run a compatible bridge inside the SAME Wine/Proton prefix as Geometry Dash.
+AutoDeafen supports the conventional Windows Discord pipe names discord-ipc-0
+through discord-ipc-9.
+
+Use the AutoDeafen multi-IPC fork of rpc-bridge. It exposes discord-ipc-0
+through discord-ipc-9 so AutoDeafen and another Discord RPC mod can connect at
+the same time:
+
+   Project:   https://github.com/Justa-Doge/rpc-bridge-autodeafen
+   Downloads: https://github.com/Justa-Doge/rpc-bridge-autodeafen/releases
+
+Download the latest AutoDeafen multi-IPC release and read its release notes
+because Wine compatibility requirements can change. Do not replace its
+bridge.exe with upstream's single-endpoint build if another mod uses Discord
+RPC; both programs could otherwise compete for discord-ipc-0.
+
+- Plain Wine: run bridge.exe in the Geometry Dash prefix and choose Install.
+- Lutris: choose "Run EXE inside Wine prefix", open bridge.exe, and choose
+  Install.
+- Steam/Proton (recommended bridge.sh method):
+  1. Extract bridge.exe and bridge.sh into the same permanent folder. Use a
+     folder path with no spaces because current bridge service setup may not
+     preserve spaces correctly. launchd.sh is for macOS and is not used here.
+  2. Make bridge.sh executable through your file manager or with:
+
+     chmod +x "/absolute/path/to/bridge.sh"
+
+  3. Open Geometry Dash's Steam Properties and add the bridge wrapper to its
+     Launch Options:
+
+     "/absolute/path/to/bridge.sh" %command%
+
+     Use the real absolute path, not the example. Preserve any existing launch
+     options and insert the bridge path immediately before %command%.
+
+Do not install the bridge only into a different default Wine prefix. The Steam
+bridge.sh method launches it inside Geometry Dash's Proton prefix without a
+separate service installation. If you use another installation method, make
+sure it targets Geometry Dash's exact prefix.
+
+IMPORTANT: Starting and signing in to the native Discord client before Geometry
+Dash gives the fastest connection. The AutoDeafen bridge and mod both retry, so
+Discord can also be started later without restarting Geometry Dash. Allow a few
+seconds for both sides to reconnect.
+
+DISCORD AND LAUNCHER PACKAGE NOTES
+
+Check how both Discord and Steam or Lutris were installed. They are separate,
+and either one may be sandboxed.
+
+- Official Discord installed as a native package or archive (pacman, APT, DNF,
+  and similar): the bridge checks the normal XDG runtime directory for
+  discord-ipc-0 through discord-ipc-9. Extra Flatpak permission is normally not
+  needed unless Steam or the launcher is itself a Flatpak.
+- Flatpak Discord (app ID com.discordapp.Discord): the bridge checks its known
+  Flatpak socket locations. If Steam or another launcher is also a Flatpak, its
+  sandbox must be allowed to access Discord's runtime socket. Follow the current
+  Flatpak instructions in the bridge project linked above.
+- Snap Discord (discord or discord-canary): with non-sandboxed Steam, bridge.sh
+  searches the known Snap socket locations. If the launcher is also sandboxed,
+  compatibility depends on that launcher; check the bridge's current
+  documentation and log.
+- Vesktop/arRPC: its current RPC implementation does not provide the
+  authentication and voice-setting commands AutoDeafen requires. Treat it as
+  unsupported even if the bridge finds its socket.
+
+The package manager does not change AutoDeafen itself; it changes where the
+bridge must find Discord's socket and whether a sandbox blocks access.
+AutoDeafen does not download, install, or start a third-party bridge for you.
+
+
+2. AUTHORIZE AUTODEAFEN
+-----------------------
+
+1. Return to Geometry Dash, enter and pause a level, then select AutoDeafen's
+   music-off button. If AutoDeafen is already authorized, select
+   Re-authenticate.
+2. Select Open Guide and follow the Discord application setup page.
+3. In the Discord Developer Portal, open OAuth2, add this exact Redirect URI,
+   and save it:
+
+   http://localhost:8000
+
+4. Copy each credential and use Paste Client ID and Paste Client Secret in
+   AutoDeafen, then select Continue.
+5. Allow the requested RPC voice permissions in the browser.
+
+During authorization, AutoDeafen listens on IPv4 loopback (127.0.0.1), TCP port
+8000, for up to five minutes. If another program is using that port, close it.
+If AutoDeafen already has an authorization attempt running, complete it in the
+browser, wait up to five minutes, or restart Geometry Dash before trying again.
+
+Keep the Client Secret private. AutoDeafen stores it locally so it can refresh
+your Discord authorization; do not share it or post it in logs. Discord
+restricts RPC access, so if Discord says the application is not approved, check
+the application's tester/access settings in the Developer Portal and follow
+Discord's current RPC requirements.
+
+
+3. IF AUTHORIZATION SUCCEEDS BUT CONNECTION FAILS
+-------------------------------------------------
+
+"Authorization callback received" means the browser returned a valid callback
+to AutoDeafen. It does not confirm that Discord accepted the token exchange or
+that AutoDeafen connected to Discord IPC.
+
+If the in-game error mentions the token request, verify the Client ID, Client
+Secret, exact Redirect URI, internet connection, and Discord RPC access. If it
+says Discord IPC is unavailable, check the Geode log for the Windows pipe error
+number. Changing the Client ID or Client Secret cannot create a missing IPC
+pipe.
+
+Check these items:
+
+- Discord is open and signed in.
+- If Discord is native Linux, the AutoDeafen bridge is running inside Geometry
+  Dash's
+  exact Wine/Proton prefix.
+- If Discord is Windows, it is running in the same prefix as Geometry Dash.
+- The Steam launch option points to the real bridge.sh path, bridge.sh is
+  executable, and bridge.exe remains beside it.
+- If Steam or Lutris is a Flatpak, follow the bridge's current Flatpak steps so
+  the launcher can see Discord's socket. For another sandboxed-launcher setup,
+  check the bridge's current documentation and log.
+- Restart Discord, the bridge, and Geometry Dash after changing the setup.
+
+STEAM/PROTON QUICK TROUBLESHOOTING
+
+Follow these checks in order. Stop when a check fails; later steps depend on
+the earlier ones.
+
+1. Close Geometry Dash completely. Open the official Linux Discord client,
+   sign in, and leave it running.
+
+2. Check that Discord created its native socket. Run:
+
+   printf 'UID=%s XDG_RUNTIME_DIR=%s\n' "$(id -u)" "$XDG_RUNTIME_DIR"
+
+   find "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" -maxdepth 1 \
+     -name 'discord-ipc-*' -print
+
+   A native pacman/APT/DNF Discord installation normally prints a path such as
+   /run/user/1000/discord-ipc-0. If nothing is printed, restart Discord and
+   repeat this check. The bridge cannot connect until this socket exists.
+
+3. Check the bridge files. Replace the example path with the real path:
+
+   test -x "/home/NAME/rpc-bridge/bridge.sh" \
+     && echo "bridge.sh is executable" \
+     || echo "bridge.sh is NOT executable"
+
+   test -r "/home/NAME/rpc-bridge/bridge.exe" \
+     && echo "bridge.exe was found" \
+     || echo "bridge.exe is MISSING"
+
+   Both files must be in that same folder. Only bridge.sh is used in Steam's
+   Launch Options. Marking launchd.sh executable does not help on Linux.
+
+4. Check Geometry Dash's Steam Launch Options. The bridge entry must use the
+   full Linux path to bridge.sh, followed by %command%:
+
+   "/home/NAME/rpc-bridge/bridge.sh" %command%
+
+   Preserve existing environment options used by Geometry Dash or Geode, but
+   place the quoted bridge.sh path immediately before %command%. Do not use
+   bridge.exe, launchd.sh, a file:// URL, a relative path, or a path beginning
+   with ~. Keep the bridge folder path free of spaces.
+
+5. With Discord still open, launch Geometry Dash from Steam. While the game is
+   open, run:
+
+   pgrep -af 'bridge\.exe|rpc-bridge'
+
+   A bridge.exe process should appear. If it does not, the Steam wrapper failed
+   before the bridge could run; recheck the path, executable permission, and
+   Launch Options.
+
+6. Find the bridge logs inside Geometry Dash's Proton prefix. Geometry Dash has
+   Steam app ID 322170. AutoDeafen has an Open Bridge Logs button in its Linux
+   settings; it opens the active prefix's log folder in your normal Linux file
+   manager.
+
+   If the button says the folder is missing, the bridge has not created a log
+   in this prefix yet. To locate the folder manually, the path is normally:
+
+   <Steam library>/steamapps/compatdata/322170/pfx/drive_c/windows/logs/
+
+   This may be in a custom Steam library rather than the default Steam folder.
+   bridge.log belongs to discord-ipc-0. The multi-IPC workers use
+   bridge-ipc-1.log through bridge-ipc-9.log. AutoDeafen normally tries
+   discord-ipc-1 first, so check that worker log as well. If none of these logs
+   was created or updated by the latest game launch, the wrapper did not start
+   inside Geometry Dash's prefix.
+
+7. To copy only allowlisted startup/status lines, replace the example log path
+   and run this whole command:
+
+   LC_ALL=C grep -aE \
+     -e '^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}-[0-9]+\] )?(------ rpc-bridge|rpc-bridge v|Running as (Steam|service)|Running endpoint worker|\(Steam\))' \
+     -e '^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}-[0-9]+\] )?(Checking if AF_UNIX|AF_UNIX|Using syscall fallback)' \
+     -e '^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}-[0-9]+\] )?(Connecting to socket|IPC directory:|Probing |    error:|Connected to )' \
+     -e '^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}-[0-9]+\] )?(Pipe |Waiting for pipe|Failed to (create pipe|connect to pipe|connect to socket)|Connected to Discord|Discord socket unavailable)' \
+     -e '^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}-[0-9]+\] )?(In Broken pipe|Out Broken pipe|Retrying new connection)' \
+     "/path/to/bridge-ipc-1.log" \
+     | tail -n 120
+
+   Replace the example with the newest relevant bridge log. The AutoDeafen fork
+   does not log raw Discord frame contents. If you use a different bridge build,
+   keep using the allowlist because other versions may expose access tokens.
+
+Interpret the safe output:
+
+- No bridge logs: bridge.sh did not launch correctly or the wrong Proton prefix
+  was checked.
+- If an installed bridge reports "AF_UNIX sockets not supported" or prints a
+  Wine Staging message, follow its version-compatibility advice.
+- A fallback to /run/user/1000 when the UID printed in step 2 is not 1000: the
+  bridge chose the wrong runtime directory. Set BRIDGE_RPC_PATH to the actual
+  XDG runtime directory before the bridge.sh entry in Steam's Launch Options.
+  For example:
+
+  BRIDGE_RPC_PATH=/run/user/ACTUAL_UID \
+    "/home/NAME/rpc-bridge/bridge.sh" %command%
+- "Pipe ... created" then "Waiting for pipe connection": the bridge is
+  running normally and waiting for AutoDeafen.
+- "Pipe connected" followed by probe errors or "Failed to connect to socket":
+  the bridge ran, but native Discord's socket was missing or not visible.
+- "Connected to Discord": the bridge transport worked. Check the new Geode log
+  for an AutoDeafen authentication or RPC-command error instead.
+
+Common Windows pipe errors in the Geode log:
+
+- Error 2 or 3: the Discord/bridge pipe does not exist in this prefix. The
+  bridge may not have started, may be in another prefix, or may have exited
+  because it could not find the native Discord socket.
+- Error 231: the pipe is busy, often because another Discord RPC program is
+  already using the bridge's active connection.
+- Error 5: access to the pipe was denied.
+
+AUTODEAFEN DIAGNOSTIC IDS
+
+AutoDeafen v2.0.3 and later adds privacy-safe ADIPC diagnostic lines to the
+Geode log. Search the log for ADIPC-. These lines report whether credentials
+are present, but never print the Client Secret, access token, authorization
+code, nonce, or raw Discord IPC payload.
+
+- ADIPC-CREDENTIALS: OAuth finished and passed credentials to the IPC worker.
+- ADIPC-CONNECT: AutoDeafen opened a Discord pipe/socket, or its final warning
+  says how many endpoints were probed and includes the operating-system error.
+- ADIPC-HANDSHAKE-WRITE: the first Discord handshake reached the pipe.
+- ADIPC-READY: Discord returned its READY event.
+- ADIPC-AUTH-WRITE: AutoDeafen sent AUTHENTICATE; token=redacted is intentional.
+- ADIPC-RESPONSE command=AUTHENTICATE: Discord accepted authentication.
+- ADIPC-RESPONSE command=SET_VOICE_SETTINGS: Discord accepted the deafen or
+  undeafen update.
+- ADIPC-RPC-REJECT or ADIPC-CLOSE: Discord rejected or closed a specific stage;
+  the same line contains its numeric response code when one was provided.
+- ADIPC-READY-READ, ADIPC-RESPONSE-READ, or ADIPC-IDLE-READ: the transport
+  opened, but a specific read timed out, broke, or returned a Win32 I/O error.
+
+To share only AutoDeafen's safe diagnostic lines, search the latest Geode log
+for ADIPC- and copy those matching lines. Also include the AutoDeafen version,
+the exact Steam Launch Options text, and the selected Proton version.
+
+If an installed bridge says AF_UNIX sockets are unsupported, follow the
+compatibility advice it prints. Changing AutoDeafen's credentials cannot fix
+that Wine or Proton limitation.
+
+The AutoDeafen bridge stores its Wine-side logs here:
+
+   C:\windows\logs\bridge.log
+   C:\windows\logs\bridge-ipc-1.log through bridge-ipc-9.log
+
+On success, its startup section should progress from creating and waiting for
+the pipe to connecting to Discord. "Waiting for pipe connection" is normal: it
+means the bridge is running and waiting for AutoDeafen. "Failed to connect to
+socket" means the bridge started but could not see the native Linux Discord
+socket.
+
+The AutoDeafen fork omits raw Discord IPC traffic from its logs. If a different
+bridge build is installed, do not share its complete log; use the strict
+allowlist in step 7.
+
+AutoDeafen also writes the Windows pipe error number to the Geode log. With
+valid saved Discord credentials, it keeps retrying while Geometry Dash is
+running whenever the Windows pipe becomes available. The AutoDeafen bridge also
+retries its native Discord socket, so Discord may be started after the game.

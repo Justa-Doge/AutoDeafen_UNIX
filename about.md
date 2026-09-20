@@ -1,21 +1,29 @@
 # <cj>AutoDeafen</c>
 
-# NOT TO BE MISTAKEN WITH 'AutoDeafen' BY <cj>@lynxdeer</c>
-## This mod only works for NON-WINDOWS USERS!!
+Automatically <cl>deafens</c> Discord after you reach a chosen percentage in a level, then <co>restores audio</c> when you die, reset, complete the level, pause, or leave.
 
-Automatically <cl>deafens</c> when you <cj>reach a certain percentage</c> in a level, then <co>undeafens when you win/die</c>.
+## <co>Features</c>
 
-Configurable <cg>per-level</c> in the <co>pause menu</c> (disabled by default).
-### <co>Includes:</c>
-* A neat config menu in the pause menu
-* Configurable Percentage per-level
-* No need for a keybind! Interacts with discord via IPC
-* Configurable Global Enabling and Percentage `(In Mod Config)`
+* Configure AutoDeafen separately for each level.
+* Choose global defaults from the mod settings.
+* Optionally enable it in practice mode.
+* Pause safely: AutoDeafen restores audio while paused and deafens again after resuming if you are still past the chosen percentage.
+* Control Discord through IPC without a keybind.
 
-<co>Side note</c>: If you want to disable the deafen sound, go to <cj>Discord Settings</c> > <cj>Voice</c> & <cj>Video</c> > <cj>Sounds</c> > <cj>Deafen</c>
+## <co>Platforms</c>
 
-If you find any issues or want to give a suggestion/feedback, feel free to DM <cj>@justa_doge3252</c> on discord!
+* <cg>macOS</c>: Apple silicon and Intel.
+* <cg>Windows</c>: Native 64-bit Geometry Dash and Discord.
+* <cg>Linux</c>: Geometry Dash through Wine or Proton, with official Discord for Linux connected through the AutoDeafen bridge.
 
-Before messaging me, Check:
-* Is your mod up to date? (I will not give support for outdated versions)
-* Are you authenticated with discord? (Try using the "Re-Authenticate" button in the config popup)
+<cy>Linux note:</c> Open <cj>Linux Setup Guide</c> in the mod settings for the required bridge setup. Vesktop/arRPC and other Discord wrappers are not currently supported.
+
+## <co>Discord setup</c>
+
+Pause a level, press the music-off button, and follow the OAuth setup guide. Linux users should also follow the bundled Linux guide for their runtime setup.
+
+<co>Tip:</c> To mute Discord's deafen sound, open <cj>Discord Settings</c> > <cj>Voice & Video</c> > <cj>Sounds</c> > <cj>Deafen</c>.
+
+AutoDeafen is based on the original mod by <cj>Lynxdeer</c> and is published with permission.
+
+If you need help or have a question, DM <cj>@justa_doge3252</c> on Discord.

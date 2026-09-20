@@ -1,25 +1,28 @@
 {
-	"geode": "5.7.1",	
+	"geode": "5.7.1",
 	"gd": {
 		"win": "2.2081",
 		"mac": "2.2081"
 	},
 	"id": "justa_doge.autodeafen_unix",
-	"description": "Makes your loud friends shut up when it counts.",
+	"description": "Automatically deafens Discord after you reach a chosen percentage in a level.",
 	"tags": ["enhancement", "utility"],
 	"links": {
 		"source": "https://github.com/Justa-Doge/AutoDeafen_UNIX"
 	},
-	"name": "AutoDeafen_UNIX",
-	"version": "v1.0.1",
+	"name": "AutoDeafen",
+	"version": "v2.0.5",
 	"developer": "Justa_Doge",
+	"resources": {
+		"files": ["LINUX_SETUP.txt"]
+	},
 	"dependencies": { "geode.node-ids": ">=v1.22.0" },
 	"settings": {
 		"default_enabled": {
 			"name": "Enabled By Default",
 			"type": "bool",
 			"default": false,
-			"description": "Whether AutoDeafen is <co>enabled by default</c> when you load into a level for the first time. Basically enables AutoDeafen globally rather than per-level."
+			"description": "Whether AutoDeafen is <co>enabled by default</c> when a level does not have its own saved setting."
 		},
 		"default_percentage": {
 			"name": "Default Percentage",
@@ -28,13 +31,23 @@
 			"default": 50,
 			"min": 0,
 			"max": 100,
-			"description": "The <co>default percentage to deafen at</c> when you load into a level for the first time."
+			"description": "The <co>default percentage to deafen at</c> when a level does not have its own saved setting."
 		},
 		"practice": {
 			"name": "Enabled In Practice Mode",
 			"type": "bool",
 			"default": false,
-			"description": "Whether AutoDeafen should be enabled during practice mode. Dunno why you'd ever want this, but it's there if you do."
+			"description": "Whether AutoDeafen should manage Discord while you are in practice mode."
+		},
+		"linux_setup_guide": {
+			"name": "Linux Setup Guide",
+			"type": "custom:linux-guide",
+			"platforms": ["win"],
+			"buttons": {
+				"open": "Open Setup Guide",
+				"open-log-folder": "Open Bridge Logs"
+			},
+			"description": "Opens the Linux setup guide or the bridge log folder in the default Linux file manager. These controls appear only when Geometry Dash is running through Wine on Linux."
 		}
 	}
 }
