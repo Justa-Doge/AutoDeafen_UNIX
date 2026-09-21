@@ -1,3 +1,5 @@
+# not working on this anymore, gonna work on macos only now
+
 # AutoDeafen
 
 AutoDeafen is a Geode mod for Geometry Dash that deafens Discord once you reach a chosen percentage in a level. It restores audio when you die, complete the level, or leave the attempt.
